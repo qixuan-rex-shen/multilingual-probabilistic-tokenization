@@ -1,0 +1,201 @@
+project:
+  root: .
+experiment:
+  id: experiment_001
+runtime:
+  mode: train
+checkpointing:
+  enabled: true
+  manifest_path: experiments/research_pipeline/manifest.json
+paths:
+  raw_data: data/raw
+  processed_data: data/processed
+  experiments: experiments
+  outputs: outputs
+  tokenizers: outputs/tokenizers
+  datasets: outputs/datasets
+  checkpoints: outputs/checkpoints
+  downstream_checkpoints: outputs/checkpoints/downstream
+  results: outputs/results
+  logs: outputs/logs
+  language_classifier: outputs/language_classifier
+  hf_cache: data/cache/huggingface
+data_download:
+  mode: capped
+  max_text_bytes_per_language: 15000000000
+  parquet_shard_rows: 10000
+  languages:
+  - en
+  - es
+  - hi
+  sources:
+    culturax: uonlp/CulturaX
+  gluecos:
+  - Huggmachas/GLuecos_NER_EN_HI
+  - Huggmachas/GLuecos_POS_EN_HI_FG
+  - Huggmachas/GLuecos_POS_EN_HI_UD
+  - Huggmachas/GLuecos_POS_EN_ES
+  - Huggmachas/GLuecos_Sentiment_EN_ES
+data_preparation:
+  manifest_version: 1
+  preprocessing:
+    unicode_normalization: NFKC
+    strip_whitespace: true
+    collapse_whitespace: true
+  filtering:
+    min_characters: 1
+    max_characters: 1000000
+  splits:
+    train_fraction: 0.9
+    validation_fraction: 0.067
+    test_fraction: 0.033
+    hash_algorithm: sha256
+  corpus_storage:
+    mode: manifest_only
+    parquet_batch_rows: 10000
+  balancing:
+    pretokenizer_strategy: equal_source_text_bytes
+    final_strategy: token_count_after_bpe_training
+    source_byte_tolerance: 100000
+  downstream:
+    preserve_original_columns: true
+tokenizer:
+  vocab_size: 50000
+  tokenizer_algorithm: bpe
+  normalization: NFKC
+  character_coverage: 1.0
+  special_tokens:
+  - <s>
+  - <pad>
+  - </s>
+  - <unk>
+  - <mask>
+  per_language_sampling_weights:
+    en: 1.0
+    es: 1.0
+    hi: 1.0
+  random_seed: 42
+  # A deterministic balanced local fitting subset.  Full 15 GB-per-language
+  # fitting exhausted available memory before the tokenizer could save.
+  max_training_text_bytes_per_language: 1000000000
+  min_frequency: 2
+  training_batch_documents: 1000
+probabilistic_tokenizer:
+  tokenizer_algorithm: unigram
+  vocab_size: 50000
+  character_coverage: 1.0
+  normalization: NFKC
+  special_tokens:
+  - <s>
+  - <pad>
+  - </s>
+  - <unk>
+  - <mask>
+  per_language_sampling_weights:
+    en: 1.0
+    es: 1.0
+    hi: 1.0
+  # Proposed-arm runtime candidate selection. The frozen Unigram vocabulary is
+  # unchanged; a lower temperature sharpens the path distribution.
+  temperature: 0.7
+  max_candidates: 3
+  min_probability: 0.05
+  language_threshold: 0.05
+  alpha: 1.0
+  beta: 1.0
+  routing_auxiliary_loss_weight: 0.05
+  random_seed: 42
+  # Must match the BPE arm so the tokenizer comparison uses identical text.
+  max_training_text_bytes_per_language: 1000000000
+  training_batch_documents: 1000
+  unigram_shrinking_factor: 0.75
+  unigram_max_piece_length: 32
+  language_classifier:
+    algorithm: char_ngram_sgd
+    max_examples_per_language: 25000
+    ngram_min: 2
+    ngram_max: 5
+    hash_features: 262144
+    batch_size: 256
+    alpha: 1.0e-05
+    seed: 42
+    supervision: culturax_training_language_labels_only
+tokenizer_diagnostics:
+  validation_examples_per_language: 1000
+model:
+  architecture: XLM-R-base
+  profile: final
+  layers: 12
+  hidden_size: 768
+  attention_heads: 12
+  intermediate_size: 3072
+  hidden_dropout: 0.1
+  attention_dropout: 0.1
+  layer_norm_epsilon: 1.0e-05
+  max_position_embeddings: 514
+  vocab_size: configurable
+  max_sequence_length: 512
+training:
+  objective: masked_language_modeling
+  mask_probability: 0.15
+  optimizer: AdamW
+  learning_rate: 0.0001
+  scheduler: linear_warmup
+  warmup_ratio: 0.06
+  weight_decay: 0.01
+  precision: fp16_or_bfloat16_if_available
+  gradient_clipping: 1.0
+  # RTX 4060 (8 GB) preflight: 32 x 512 OOMs; 8 x 512 fits both arms.
+  # This preserves the intended effective batch size of 32 for AdamW.
+  batch_size: 8
+  epochs: 3
+  gradient_accumulation_steps: 4
+  seed: 42
+  maximum_optimizer_steps: 100000
+  maximum_training_token_budget: 0
+  evaluation_interval: 1000
+  checkpoint_interval: 1000
+  maximum_retained_checkpoints: 3
+  early_stopping_patience: 5
+  validation_batches_per_language: 100
+  dataloader_workers: 0
+  # CPU-only, ordered candidate construction for the proposed arm.  Each
+  # worker loads the frozen tokenizer and language-prior artifact, receives
+  # bounded scheduled raw-document batches, and returns them in the original
+  # order. This changes throughput only—not candidate paths or MLM inputs.
+  candidate_preparation_workers: 2
+  candidate_preparation_buffer_batches: 2
+  # Retained as a serial fallback; it is bypassed when worker processes run.
+  candidate_prefetch_batches: 0
+  document_concatenation: false
+  packing_crosses_document_boundaries: false
+  document_sequence_policy: prefix_truncate
+  padding_strategy: longest
+  multilingual_sampling:
+    method: equal
+    temperature: 1.0
+finetuning:
+  # Identical values are used by the BPE control and probabilistic-fusion arm.
+  batch_size: 8
+  epochs: 3
+  optimizer: AdamW
+  learning_rate: 0.00002
+  scheduler: linear_warmup
+  warmup_ratio: 0.06
+  weight_decay: 0.01
+  gradient_clipping: 1.0
+  checkpoint_selection_metric: macro_f1
+  precision: fp16_or_bfloat16_if_available
+  # Zero uses every fixed GLueCoS split. A positive value is reserved for a
+  # deterministic local smoke test and never for a reported experiment.
+  max_examples_per_split: 0
+evaluation:
+  seeds:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  significance_level: 0.05
+  confidence_level: 0.95
+  paired_bootstrap_samples: 10000

@@ -1,0 +1,98 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Keep the public project overview only. Personal notes and generated report
+# Markdown stay local, including INSTRUCTIONS.md and notebook-exported notes.
+*.md
+!/README.md
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build and benchmark artifacts
+build/
+dist/
+coverage/
+*.prof
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local research artifacts (large, generated, and reproducible from configuration)
+/data/cache/**
+/data/raw/**
+/data/processed/**
+/outputs/**
+/experiments/**
+/checkpoints/**
+/results/**
+!/data/
+!/data/**/
+!/outputs/
+!/outputs/**/
+!/experiments/
+!/checkpoints/
+!/results/
+!/data/**/.gitkeep
+!/outputs/**/.gitkeep
+!/experiments/.gitkeep
+!/checkpoints/.gitkeep
+!/results/.gitkeep
+
+# Generated artifacts that may be written outside the configured output tree.
+# Keep source/configuration JSON and notebooks trackable; do not add a blanket
+# rule for those extensions.
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.bin
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.joblib
+*.model
+*.spm
+*.vocab
+*.parquet
+*.arrow
+*.feather
+*.npz
+*.npy
+*.sqlite
+*.sqlite3
+*.db
+
+# Training telemetry, temporary writes, interrupted checkpoints, and notebook
+# runtime state.  Durable published metrics remain below ignored output roots.
+events.out.tfevents.*
+*.tfevents.*
+*.log
+*.jsonl
+*.pid
+*.tmp
+*.temp
+*.incomplete
+*.previous
+.ipynb_checkpoints/
+.tensorboard-info/
+wandb/
+lightning_logs/
+runs/
+
+# Legacy Google Drive synchronization state
+.tmp.drivedownload/
+.tmp.driveupload/

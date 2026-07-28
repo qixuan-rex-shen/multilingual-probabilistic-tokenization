@@ -1,0 +1,16 @@
+# Install PyTorch first from requirements-cuda130.txt (NVIDIA CUDA) or an
+# appropriate platform-specific PyTorch source before installing these packages.
+accelerate>=1.12,<2
+datasets>=4.8,<6
+evaluate>=0.4.3,<1
+huggingface-hub>=1.3,<2
+ipykernel>=7,<8
+ipywidgets>=8.1,<9
+jupyterlab>=4.5,<5
+PyYAML>=6.0.3,<7
+scikit-learn>=1.9,<2
+scipy>=1.18,<2
+seqeval>=1.2.2,<2
+tensorboard>=2.20,<3
+tokenizers>=0.22,<1
+transformers>=5.12,<6
