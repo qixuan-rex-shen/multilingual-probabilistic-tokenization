@@ -23,6 +23,9 @@ dist/
 coverage/
 *.prof
 
+# Local ACL/Overleaf paper project
+/Association_for_Computational_Linguistics__ACL__conference/
+
 # Editor and operating-system files
 .DS_Store
 Thumbs.db
@@ -53,6 +56,7 @@ Thumbs.db
 # Generated artifacts that may be written outside the configured output tree.
 # Keep source/configuration JSON and notebooks trackable; do not add a blanket
 # rule for those extensions.
+!/experiment_record.json
 *.safetensors
 *.pt
 *.pth

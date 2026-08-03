@@ -101,6 +101,23 @@ class UnigramCandidateTokenizer:
         self.tokenizer = tokenizer
         self.settings = settings
         vocabulary = tokenizer.get_vocab()
+        # These IDs and the vocabulary size are immutable properties of the
+        # frozen artifact.  Keeping Python integer copies avoids repeatedly
+        # crossing the native ``tokenizers`` boundary from the long-running
+        # training process while leaving every encoded candidate unchanged.
+        self.vocab_size = len(vocabulary)
+        self.pad_token_id = self._required_token_id(tokenizer.pad_token_id, "pad")
+        self.mask_token_id = self._required_token_id(tokenizer.mask_token_id, "mask")
+        self.bos_token_id = self._required_token_id(
+            tokenizer.bos_token_id if tokenizer.bos_token_id is not None else tokenizer.cls_token_id,
+            "BOS/CLS",
+        )
+        self.eos_token_id = self._required_token_id(
+            tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.sep_token_id,
+            "EOS/SEP",
+        )
+        self.special_token_ids = tuple(int(token_id) for token_id in tokenizer.all_special_ids)
+        self.special_token_count = 2
         raw_vocab = tokenizer_json.get("model", {}).get("vocab", [])
         self.pieces_by_first_character: dict[str, list[tuple[str, int, float]]] = {}
         if isinstance(raw_vocab, list):
@@ -128,6 +145,12 @@ class UnigramCandidateTokenizer:
                     node = node.setdefault(character, {})
                 node.setdefault("_pieces", []).append((piece, token_id, piece_score))
             self.piece_tries[first_character] = root
+
+    @staticmethod
+    def _required_token_id(token_id: int | None, name: str) -> int:
+        if token_id is None:
+            raise ValueError(f"Frozen tokenizer is missing its {name} token ID.")
+        return int(token_id)
 
     def configure_candidate_selection(self, runtime_settings: dict[str, Any]) -> dict[str, Any]:
         """Apply a recorded runtime top-k selection policy to this instance.
@@ -282,7 +305,7 @@ class UnigramCandidateTokenizer:
         candidates: list[tuple[float, float, list[int], list[tuple[int, int]], list[float]]] = []
         max_content_length = None
         if max_sequence_length is not None:
-            max_content_length = max_sequence_length - len(build_xlmr_single_sequence(self.tokenizer, []))
+            max_content_length = max_sequence_length - self.special_token_count
         for token_score, path in global_paths:
             if max_content_length is not None:
                 path = path[:max_content_length]
@@ -290,7 +313,7 @@ class UnigramCandidateTokenizer:
             content_offsets = [
                 _original_span(normalized_character_spans, start, end) for _, start, end in path
             ]
-            input_ids = build_xlmr_single_sequence(self.tokenizer, content_ids)
+            input_ids = [self.bos_token_id, *content_ids, self.eos_token_id]
             special_count = len(input_ids) - len(content_ids)
             if special_count < 0:
                 raise RuntimeError("Tokenizer special-token construction returned an invalid sequence.")

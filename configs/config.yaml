@@ -3,7 +3,7 @@ project:
 experiment:
   id: experiment_001
 runtime:
-  mode: train
+  mode: resume
 checkpointing:
   enabled: true
   manifest_path: experiments/research_pipeline/manifest.json

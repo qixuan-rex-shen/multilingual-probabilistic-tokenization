@@ -197,10 +197,10 @@ def _candidate_example_from_record(
         add_special_tokens=False,
         return_offsets_mapping=True,
         truncation=True,
-        max_length=max_sequence_length - len(build_xlmr_single_sequence(tokenizer.tokenizer, [])),
+        max_length=max_sequence_length - tokenizer.special_token_count,
     )
     offsets = list(encoded["offset_mapping"])
-    content_capacity = max_sequence_length - len(build_xlmr_single_sequence(tokenizer.tokenizer, []))
+    content_capacity = max_sequence_length - tokenizer.special_token_count
     if content_capacity <= 0:
         raise ValueError("max_sequence_length cannot accommodate tokenizer special tokens.")
     chunk_offsets = offsets[:content_capacity]
@@ -527,12 +527,11 @@ def _mask_candidate_batch(
     token through an unmasked differently segmented candidate.
     """
 
-    fast_tokenizer = tokenizer.tokenizer
     batch_size = len(examples)
     max_candidates = max(len(candidates) for candidates, _ in examples)
     max_length = max(len(candidate.input_ids) for candidates, _ in examples for candidate in candidates)
     input_ids = torch.full(
-        (batch_size, max_candidates, max_length), fast_tokenizer.pad_token_id, dtype=torch.long
+        (batch_size, max_candidates, max_length), tokenizer.pad_token_id, dtype=torch.long
     )
     attention_mask = torch.zeros_like(input_ids)
     char_spans = torch.full((batch_size, max_candidates, max_length, 2), -1, dtype=torch.long)
@@ -553,7 +552,7 @@ def _mask_candidate_batch(
 
     reference_ids = input_ids[:, 0].clone()
     reference_attention = attention_mask[:, 0]
-    special_ids = torch.tensor(fast_tokenizer.all_special_ids, dtype=torch.long)
+    special_ids = torch.tensor(tokenizer.special_token_ids, dtype=torch.long)
     is_special = (reference_ids.unsqueeze(-1) == special_ids).any(dim=-1)
     eligible = (reference_attention == 1) & ~is_special
     generator = torch.Generator(device="cpu").manual_seed(seed)
@@ -590,8 +589,8 @@ def _mask_candidate_batch(
     )
     mask_positions = has_match & (replacement_for_candidate < 0.8)
     random_positions = has_match & (replacement_for_candidate >= 0.8) & (replacement_for_candidate < 0.9)
-    input_ids.masked_fill_(mask_positions, fast_tokenizer.mask_token_id)
-    random_ids = torch.randint(len(fast_tokenizer), input_ids.shape, generator=generator, dtype=torch.long)
+    input_ids.masked_fill_(mask_positions, tokenizer.mask_token_id)
+    random_ids = torch.randint(tokenizer.vocab_size, input_ids.shape, generator=generator, dtype=torch.long)
     input_ids[random_positions] = random_ids[random_positions]
     alignment_reference_indices, alignment_candidate_indices, alignment_overlap_weights = _build_sparse_alignment_edges(
         char_spans
@@ -694,7 +693,24 @@ def _save_checkpoint(
     if checkpoint_directory.exists():
         checkpoint_directory.replace(backup_directory)
     try:
-        temporary_directory.replace(checkpoint_directory)
+        # Windows can transiently hold a newly-written checkpoint file open
+        # (for example through indexing or antivirus scanning).  Retrying the
+        # final atomic directory publish preserves the all-or-nothing
+        # checkpoint contract without changing model state or training order.
+        for attempt in range(6):
+            try:
+                temporary_directory.replace(checkpoint_directory)
+                break
+            except OSError as error:
+                transient_windows_lock = getattr(error, "winerror", None) in {5, 32}
+                if not transient_windows_lock or attempt == 5:
+                    raise
+                delay_seconds = float(attempt + 1)
+                print(
+                    "Checkpoint publish was temporarily locked; "
+                    f"retrying in {delay_seconds:.0f}s ({attempt + 1}/5)."
+                )
+                time.sleep(delay_seconds)
     except Exception:
         if backup_directory.exists() and not checkpoint_directory.exists():
             backup_directory.replace(checkpoint_directory)

@@ -15,11 +15,13 @@ def main() -> None:
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     from src.evaluation.analysis import analyze_finetuning_results, write_experiment_summary
+    from src.evaluation.experiment_record import write_experiment_record
 
     config = yaml.safe_load((project_root / "configs" / "config.yaml").read_text(encoding="utf-8"))
     report = analyze_finetuning_results(project_root, config)
     summary = write_experiment_summary(project_root, config, report)
-    print({"report": report, "summary": summary})
+    record = write_experiment_record(project_root, config)
+    print({"report": report, "summary": summary, "experiment_record": str(record)})
 
 
 if __name__ == "__main__":
